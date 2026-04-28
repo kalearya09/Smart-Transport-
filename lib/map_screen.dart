@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -20,7 +21,7 @@ class _MapScreenState extends State<MapScreen> {
   final TextEditingController sourceController = TextEditingController();
   final TextEditingController destController = TextEditingController();
 
-  final String accessToken = "pk.eyJ1IjoiYXJ5YWthbGUwOSIsImEiOiJjbW10MHU4NzAxZ2hlMnJxdGQ0bnA0YmxzIn0.BgEabKzzP8AyPoR4WSYNlw";
+  final String accessToken = "YOUR_MAPBOX_TOKEN";
 
   List<LatLng> routePoints = [];
   bool isLoading = false;
@@ -72,7 +73,6 @@ class _MapScreenState extends State<MapScreen> {
     {"name": "Ramwadi", "lat": 18.5620, "lng": 73.9120},
   ];
 
-  // ================= DISTANCE =================
   double calculateDistance(LatLng a, LatLng b) {
     final Distance d = Distance();
     return d(a, b) / 1000;
@@ -92,7 +92,6 @@ class _MapScreenState extends State<MapScreen> {
     return nearest;
   }
 
-  // ================= OPEN APPS =================
   void openCabApp() async {
     final olaUrl = Uri.parse("olacabs://app");
     final uberUrl = Uri.parse("uber://");
@@ -114,7 +113,6 @@ class _MapScreenState extends State<MapScreen> {
     await launchUrl(Uri.parse("https://www.punemetrorail.org"));
   }
 
-  // ================= ROUTE =================
   Future<void> getRoute() async {
     final start = await getCoordinates(sourceController.text);
     final end = await getCoordinates(destController.text);
@@ -152,19 +150,41 @@ class _MapScreenState extends State<MapScreen> {
     distanceKm = route['distance'] / 1000;
     timeMin = route['duration'] / 60;
 
-    olaCost = distanceKm * 25;
-    busCost = distanceKm * 10;
+    // ================= FIXED PRICING =================
+    metroCost = (distanceKm / 2).ceil() * 10;
+    busCost = (distanceKm / 2).ceil() * 8;
 
+    if (distanceKm <= 1.5) {
+      olaCost = 17;
+    } else {
+      olaCost = 17 + ((distanceKm - 1.5) * 11.65);
+    }
+
+    // rounding
+    metroCost = double.parse(metroCost.toStringAsFixed(0));
+    busCost = double.parse(busCost.toStringAsFixed(0));
+    olaCost = double.parse(olaCost.toStringAsFixed(1));
+
+    // time logic (kept same)
     olaTime = timeMin;
     busTime = timeMin * 1.3;
-
-    metroCost = distanceKm * 10;
     metroTime = (timeMin * 0.7) + 5;
 
-    bestOption = "Metro + Auto";
+    // ================= BEST OPTION =================
+    double minCost = [metroCost, busCost, olaCost]
+        .reduce((a, b) => a < b ? a : b);
+
+    if (minCost == metroCost) {
+      bestOption = "Metro (Cheapest)";
+    } else if (minCost == busCost) {
+      bestOption = "Bus (Cheapest)";
+    } else {
+      bestOption = "Ola/Uber (Fastest)";
+    }
 
     final coords = route['geometry']['coordinates'];
-    routePoints = coords.map<LatLng>((c) => LatLng(c[1], c[0])).toList();
+    routePoints =
+        coords.map<LatLng>((c) => LatLng(c[1], c[0])).toList();
 
     await FirebaseFirestore.instance
         .collection('users')
@@ -193,7 +213,6 @@ class _MapScreenState extends State<MapScreen> {
     return null;
   }
 
-  // ================= CARD =================
   Widget transportCard({
     required String title,
     required String subtitle,
@@ -220,7 +239,6 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // ================= UI =================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -248,7 +266,6 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
-
       body: Stack(
         children: [
           FlutterMap(
@@ -261,8 +278,6 @@ class _MapScreenState extends State<MapScreen> {
                 urlTemplate:
                 "https://api.mapbox.com/styles/v1/mapbox/navigation-day-v1/tiles/{z}/{x}/{y}?access_token=$accessToken",
               ),
-
-              // 🚇 METRO MARKERS
               MarkerLayer(
                 markers: metroStations.map((station) {
                   return Marker(
@@ -286,18 +301,14 @@ class _MapScreenState extends State<MapScreen> {
                   );
                 }).toList(),
               ),
-
-              // 🚗 ROUTE
               if (routePoints.isNotEmpty)
                 PolylineLayer(polylines: [
                   Polyline(points: routePoints, color: Colors.black, strokeWidth: 5)
                 ]),
             ],
           ),
-
           if (isLoading)
             const Center(child: CircularProgressIndicator()),
-
           Positioned(
             top: 40,
             left: 15,
@@ -314,7 +325,6 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
           ),
-
           if (routePoints.isNotEmpty)
             Positioned(
               bottom: 0,
@@ -350,7 +360,7 @@ class _MapScreenState extends State<MapScreen> {
 
                     transportCard(
                       title: "Ola / Uber",
-                      subtitle: "₹${olaCost.toStringAsFixed(0)} • ${olaTime.toStringAsFixed(0)} min",
+                      subtitle: "₹${olaCost.toStringAsFixed(1)} • ${olaTime.toStringAsFixed(0)} min",
                       icon: Icons.local_taxi,
                       color: Colors.orange,
                       onTap: openCabApp,
