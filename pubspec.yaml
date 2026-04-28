@@ -1,20 +1,30 @@
-name: smart_route_app
-description: A sample command-line application with basic argument parsing.
-version: 0.0.1
-# repository: https://github.com/my_org/my_repo
+// This is a basic Flutter widget test.
+//
+// To perform an interaction with a widget in your test, use the WidgetTester
+// utility in the flutter_test package. For example, you can send tap and scroll
+// gestures. You can also use WidgetTester to find child widgets in the widget
+// tree, read text, and verify that the values of widget properties are correct.
 
-environment:
-  sdk: ^3.10.8
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
 
-# Add regular dependencies here.
-dependencies:
-  flutter_map: ^6.0.0
-  latlong2: ^0.9.0
-  http: ^1.2.0
-  args: ^2.7.0
-  flutter_typeahead: ^5.2.0
+import '../lib/main.dart';
 
-dev_dependencies:
-  lints: ^6.0.0
-  test: ^1.25.6
+void main() {
+  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+    // Build our app and trigger a frame.
+    await tester.pumpWidget(const MyApp());
 
+    // Verify that our counter starts at 0.
+    expect(find.text('0'), findsOneWidget);
+    expect(find.text('1'), findsNothing);
+
+    // Tap the '+' icon and trigger a frame.
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+
+    // Verify that our counter has incremented.
+    expect(find.text('0'), findsNothing);
+    expect(find.text('1'), findsOneWidget);
+  });
+}
