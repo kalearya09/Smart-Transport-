@@ -1,30 +1,31 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+name: smart_trans
+description: Smart Transport Flutter Application
+version: 1.0.0+1
 
-import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
+environment:
+  sdk: '>=3.0.0 <4.0.0'
 
-import '../lib/main.dart';
+dependencies:
+  flutter:
+    sdk: flutter
 
-void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  # Map & Location
+  flutter_map: ^6.0.0
+  latlong2: ^0.9.0
+  flutter_typeahead: ^5.2.0
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  # Networking
+  http: ^1.2.0
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  # Firebase
+  firebase_core: ^3.3.0
+  firebase_auth: ^5.1.0
+  cloud_firestore: ^5.4.0        # ← ADDED
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
-  });
-}
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
