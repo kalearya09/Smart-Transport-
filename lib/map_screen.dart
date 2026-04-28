@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_typeahead/flutter_typeahead.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'history_screen.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -20,8 +23,6 @@ class _MapScreenState extends State<MapScreen> {
   final String accessToken = "pk.eyJ1IjoiYXJ5YWthbGUwOSIsImEiOiJjbW10MHU4NzAxZ2hlMnJxdGQ0bnA0YmxzIn0.BgEabKzzP8AyPoR4WSYNlw";
 
   List<LatLng> routePoints = [];
-  List<LatLng> metroRoutePoints = [];
-
   bool isLoading = false;
 
   double distanceKm = 0, timeMin = 0;
@@ -32,48 +33,46 @@ class _MapScreenState extends State<MapScreen> {
   String nearestMetroName = "";
   double nearestMetroDistance = 0;
 
+  // ================= PUNE RESTRICTION =================
+  bool isWithinPune(LatLng loc) {
+    return loc.latitude >= 18.40 &&
+        loc.latitude <= 18.70 &&
+        loc.longitude >= 73.70 &&
+        loc.longitude <= 74.05;
+  }
+
+  // ================= METRO STATIONS =================
   final List<Map<String, dynamic>> metroStations = [
-    {"name": "Vanaz", "lat": 18.5074, "lng": 73.8077},
-    {"name": "Garware", "lat": 18.5126, "lng": 73.8326},
-    {"name": "Deccan", "lat": 18.5196, "lng": 73.8410},
-    {"name": "Civil Court", "lat": 18.5203, "lng": 73.8567},
-    {"name": "Shivajinagar", "lat": 18.5308, "lng": 73.8475},
     {"name": "PCMC", "lat": 18.6298, "lng": 73.7997},
+    {"name": "Sant Tukaram Nagar", "lat": 18.6166, "lng": 73.8037},
+    {"name": "Bhosari", "lat": 18.6040, "lng": 73.8075},
+    {"name": "Kasarwadi", "lat": 18.5933, "lng": 73.8095},
+    {"name": "Phugewadi", "lat": 18.5805, "lng": 73.8130},
+    {"name": "Dapodi", "lat": 18.5700, "lng": 73.8157},
+    {"name": "Bopodi", "lat": 18.5610, "lng": 73.8175},
+    {"name": "Khadki", "lat": 18.5520, "lng": 73.8200},
+    {"name": "Range Hill", "lat": 18.5450, "lng": 73.8235},
+    {"name": "Shivajinagar", "lat": 18.5308, "lng": 73.8470},
+    {"name": "Civil Court", "lat": 18.5203, "lng": 73.8567},
+    {"name": "Mandai", "lat": 18.5135, "lng": 73.8558},
+    {"name": "Swargate", "lat": 18.5010, "lng": 73.8630},
+
+    {"name": "Vanaz", "lat": 18.5074, "lng": 73.8077},
+    {"name": "Anand Nagar", "lat": 18.5088, "lng": 73.8000},
+    {"name": "Ideal Colony", "lat": 18.5105, "lng": 73.8120},
+    {"name": "Nal Stop", "lat": 18.5125, "lng": 73.8225},
+    {"name": "Garware College", "lat": 18.5155, "lng": 73.8350},
+    {"name": "Deccan Gymkhana", "lat": 18.5180, "lng": 73.8400},
+    {"name": "Sambhaji Udyan", "lat": 18.5195, "lng": 73.8455},
+    {"name": "Pune Railway Station", "lat": 18.5286, "lng": 73.8740},
+    {"name": "Ruby Hall Clinic", "lat": 18.5315, "lng": 73.8770},
+    {"name": "Bund Garden", "lat": 18.5365, "lng": 73.8845},
+    {"name": "Yerawada", "lat": 18.5510, "lng": 73.8870},
+    {"name": "Kalyani Nagar", "lat": 18.5485, "lng": 73.9020},
+    {"name": "Ramwadi", "lat": 18.5620, "lng": 73.9120},
   ];
 
-  // 🔍 Suggestions
-  Future<List<String>> getSuggestions(String query) async {
-    if (query.isEmpty) return [];
-
-    final url =
-        "https://api.mapbox.com/geocoding/v5/mapbox.places/${Uri.encodeComponent(query)}.json"
-        "?autocomplete=true&limit=5&proximity=73.8567,18.5204&access_token=$accessToken";
-
-    final res = await http.get(Uri.parse(url));
-    final data = json.decode(res.body);
-
-    return (data['features'] as List)
-        .map((f) => f['place_name'].toString())
-        .toList();
-  }
-
-  Future<LatLng?> getCoordinates(String place) async {
-    if (!place.toLowerCase().contains("pune")) place = "$place Pune";
-
-    final url =
-        "https://api.mapbox.com/geocoding/v5/mapbox.places/${Uri.encodeComponent(place)}.json"
-        "?limit=1&access_token=$accessToken";
-
-    final res = await http.get(Uri.parse(url));
-    final data = json.decode(res.body);
-
-    if (data['features'].isNotEmpty) {
-      final c = data['features'][0]['center'];
-      return LatLng(c[1], c[0]);
-    }
-    return null;
-  }
-
+  // ================= DISTANCE =================
   double calculateDistance(LatLng a, LatLng b) {
     final Distance d = Distance();
     return d(a, b) / 1000;
@@ -93,23 +92,55 @@ class _MapScreenState extends State<MapScreen> {
     return nearest;
   }
 
+  // ================= OPEN APPS =================
+  void openCabApp() async {
+    final olaUrl = Uri.parse("olacabs://app");
+    final uberUrl = Uri.parse("uber://");
+
+    if (await canLaunchUrl(olaUrl)) {
+      await launchUrl(olaUrl);
+    } else if (await canLaunchUrl(uberUrl)) {
+      await launchUrl(uberUrl);
+    } else {
+      await launchUrl(Uri.parse("https://ola.com"));
+    }
+  }
+
+  void openBusApp() async {
+    await launchUrl(Uri.parse("https://pmpml.org"));
+  }
+
+  void openMetroApp() async {
+    await launchUrl(Uri.parse("https://www.punemetrorail.org"));
+  }
+
+  // ================= ROUTE =================
   Future<void> getRoute() async {
     final start = await getCoordinates(sourceController.text);
     final end = await getCoordinates(destController.text);
 
     if (start == null || end == null) return;
 
+    if (!isWithinPune(start) || !isWithinPune(end)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Only Pune locations allowed")),
+      );
+      return;
+    }
+
     setState(() => isLoading = true);
 
     final metroStart = findNearestMetro(start);
     final metroEnd = findNearestMetro(end);
 
-    final bestMetro = (metroStart!["distance"] < metroEnd!["distance"])
-        ? metroStart
-        : metroEnd;
+    if (metroStart != null && metroEnd != null) {
+      final bestMetro = (metroStart["distance"] < metroEnd["distance"])
+          ? metroStart
+          : metroEnd;
 
-    nearestMetroName = bestMetro["name"];
-    nearestMetroDistance = bestMetro["distance"];
+      nearestMetroName = bestMetro["name"];
+      nearestMetroDistance = bestMetro["distance"];
+    }
 
     final url =
         "https://api.mapbox.com/directions/v5/mapbox/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?geometries=geojson&access_token=$accessToken";
@@ -121,72 +152,103 @@ class _MapScreenState extends State<MapScreen> {
     distanceKm = route['distance'] / 1000;
     timeMin = route['duration'] / 60;
 
-    olaCost = distanceKm * 15;
-    busCost = distanceKm * 3;
+    olaCost = distanceKm * 25;
+    busCost = distanceKm * 10;
+
     olaTime = timeMin;
     busTime = timeMin * 1.3;
 
-    if (nearestMetroDistance < 3) {
-      metroCost = distanceKm * 5;
-      metroTime = timeMin * 0.7;
-      bestOption = "Metro + Auto";
-    } else if (olaTime < busTime) {
-      bestOption = "Ola/Uber";
-    } else {
-      bestOption = "Bus";
-      metroCost = 0;
-      metroTime = 0;
-    }
+    metroCost = distanceKm * 10;
+    metroTime = (timeMin * 0.7) + 5;
+
+    bestOption = "Metro + Auto";
 
     final coords = route['geometry']['coordinates'];
-    routePoints =
-        coords.map<LatLng>((c) => LatLng(c[1], c[0])).toList();
+    routePoints = coords.map<LatLng>((c) => LatLng(c[1], c[0])).toList();
 
-    metroRoutePoints.clear();
-
-    if (metroCost > 0) {
-      final metroUrl =
-          "https://api.mapbox.com/directions/v5/mapbox/driving/${start.longitude},${start.latitude};${bestMetro["lng"]},${bestMetro["lat"]}?geometries=geojson&access_token=$accessToken";
-
-      final mres = await http.get(Uri.parse(metroUrl));
-      final mdata = json.decode(mres.body);
-
-      final mcoords = mdata['routes'][0]['geometry']['coordinates'];
-      metroRoutePoints =
-          mcoords.map<LatLng>((c) => LatLng(c[1], c[0])).toList();
-    }
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(FirebaseAuth.instance.currentUser!.uid)
+        .collection('history')
+        .add({
+      'source': sourceController.text,
+      'destination': destController.text,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
 
     setState(() => isLoading = false);
   }
 
-  Widget buildCard(String title, String sub, IconData icon, bool highlight) {
-    return Container(
-      margin: EdgeInsets.symmetric(vertical: 5),
-      padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: highlight ? Colors.green.shade100 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          Icon(icon),
-          SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
-              Text(sub),
-            ],
-          )
-        ],
+  Future<LatLng?> getCoordinates(String place) async {
+    final url =
+        "https://api.mapbox.com/geocoding/v5/mapbox.places/${Uri.encodeComponent(place)}.json?access_token=$accessToken";
+
+    final res = await http.get(Uri.parse(url));
+    final data = json.decode(res.body);
+
+    if (data['features'].isNotEmpty) {
+      final c = data['features'][0]['center'];
+      return LatLng(c[1], c[0]);
+    }
+    return null;
+  }
+
+  // ================= CARD =================
+  Widget transportCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 6,
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ListTile(
+        leading: CircleAvatar(
+          radius: 22,
+          backgroundColor: color.withOpacity(0.2),
+          child: Icon(icon, color: color, size: 26),
+        ),
+        title: Text(title,
+            style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: onTap,
       ),
     );
   }
 
+  // ================= UI =================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Smart Transport")),
+      appBar: AppBar(
+        title: const Text("Smart Transport"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HistoryScreen()),
+              );
+              if (result != null) {
+                sourceController.text = result['source'];
+                destController.text = result['destination'];
+              }
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+            },
+          ),
+        ],
+      ),
+
       body: Stack(
         children: [
           FlutterMap(
@@ -199,100 +261,100 @@ class _MapScreenState extends State<MapScreen> {
                 urlTemplate:
                 "https://api.mapbox.com/styles/v1/mapbox/navigation-day-v1/tiles/{z}/{x}/{y}?access_token=$accessToken",
               ),
+
+              // 🚇 METRO MARKERS
+              MarkerLayer(
+                markers: metroStations.map((station) {
+                  return Marker(
+                    point: LatLng(station["lat"], station["lng"]),
+                    width: 40,
+                    height: 40,
+                    child: Column(
+                      children: [
+                        const Icon(Icons.train, color: Colors.blue, size: 24),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          color: Colors.white,
+                          child: Text(
+                            station["name"],
+                            style: const TextStyle(fontSize: 8),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+
+              // 🚗 ROUTE
               if (routePoints.isNotEmpty)
                 PolylineLayer(polylines: [
-                  Polyline(points: routePoints, color: Colors.blue, strokeWidth: 5)
-                ]),
-              if (metroRoutePoints.isNotEmpty)
-                PolylineLayer(polylines: [
-                  Polyline(points: metroRoutePoints, color: Colors.green, strokeWidth: 4)
+                  Polyline(points: routePoints, color: Colors.black, strokeWidth: 5)
                 ]),
             ],
           ),
 
-          if (isLoading) Center(child: CircularProgressIndicator()),
+          if (isLoading)
+            const Center(child: CircularProgressIndicator()),
 
-          // 🔍 SEARCH
           Positioned(
             top: 40,
             left: 15,
             right: 15,
             child: Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
+              padding: const EdgeInsets.all(12),
+              color: Colors.white,
               child: Column(
                 children: [
-                  TypeAheadField<String>(
-                    suggestionsCallback: getSuggestions,
-                    builder: (context, controller, focusNode) {
-                      return TextField(
-                        controller: sourceController,
-                        focusNode: focusNode,
-                        decoration: InputDecoration(
-                          hintText: "Source",
-                          border: InputBorder.none,
-                        ),
-                      );
-                    },
-                    itemBuilder: (context, s) => ListTile(title: Text(s)),
-                    onSelected: (s) => sourceController.text = s,
-                  ),
-                  Divider(),
-                  TypeAheadField<String>(
-                    suggestionsCallback: getSuggestions,
-                    builder: (context, controller, focusNode) {
-                      return TextField(
-                        controller: destController,
-                        focusNode: focusNode,
-                        decoration: InputDecoration(
-                          hintText: "Destination",
-                          border: InputBorder.none,
-                        ),
-                      );
-                    },
-                    itemBuilder: (context, s) => ListTile(title: Text(s)),
-                    onSelected: (s) => destController.text = s,
-                  ),
-                  ElevatedButton(onPressed: getRoute, child: Text("Find Route"))
+                  TextField(controller: sourceController),
+                  TextField(controller: destController),
+                  ElevatedButton(onPressed: getRoute, child: const Text("Find Route"))
                 ],
               ),
             ),
           ),
 
-          // 🔻 BOTTOM PANEL
           if (routePoints.isNotEmpty)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
               child: Container(
-                padding: EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-                ),
+                padding: const EdgeInsets.all(15),
+                color: Colors.white,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text("${distanceKm.toStringAsFixed(2)} km • ${timeMin.toStringAsFixed(0)} min"),
                     Text("Nearest Metro: $nearestMetroName (${nearestMetroDistance.toStringAsFixed(1)} km)"),
-                    Text("Best: $bestOption", style: TextStyle(color: Colors.green)),
+                    Text("Best: $bestOption", style: const TextStyle(color: Colors.green)),
 
-                    buildCard("Ola/Uber",
-                        "₹${olaCost.toStringAsFixed(0)} | ${olaTime.toStringAsFixed(0)} min",
-                        Icons.local_taxi, bestOption == "Ola/Uber"),
+                    const SizedBox(height: 10),
 
-                    buildCard("Metro",
-                        metroCost == 0 ? "Not Available"
-                            : "₹${metroCost.toStringAsFixed(0)} | ${metroTime.toStringAsFixed(0)} min",
-                        Icons.train, bestOption.contains("Metro")),
+                    transportCard(
+                      title: "Metro",
+                      subtitle: "₹${metroCost.toStringAsFixed(0)} • ${metroTime.toStringAsFixed(0)} min",
+                      icon: Icons.train,
+                      color: Colors.blue,
+                      onTap: openMetroApp,
+                    ),
 
-                    buildCard("Bus",
-                        "₹${busCost.toStringAsFixed(0)} | ${busTime.toStringAsFixed(0)} min",
-                        Icons.directions_bus, bestOption == "Bus"),
+                    transportCard(
+                      title: "Bus (PMPML)",
+                      subtitle: "₹${busCost.toStringAsFixed(0)} • ${busTime.toStringAsFixed(0)} min",
+                      icon: Icons.directions_bus,
+                      color: Colors.green,
+                      onTap: openBusApp,
+                    ),
+
+                    transportCard(
+                      title: "Ola / Uber",
+                      subtitle: "₹${olaCost.toStringAsFixed(0)} • ${olaTime.toStringAsFixed(0)} min",
+                      icon: Icons.local_taxi,
+                      color: Colors.orange,
+                      onTap: openCabApp,
+                    ),
                   ],
                 ),
               ),
