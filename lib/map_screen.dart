@@ -21,7 +21,7 @@ class _MapScreenState extends State<MapScreen> {
   final TextEditingController sourceController = TextEditingController();
   final TextEditingController destController = TextEditingController();
 
-  final String accessToken = "YOUR_MAPBOX_TOKEN";
+  final String accessToken = "pk.eyJ1IjoiYXJ5YWthbGUwOSIsImEiOiJjbW10MHU4NzAxZ2hlMnJxdGQ0bnA0YmxzIn0.BgEabKzzP8AyPoR4WSYNlw";
 
   List<LatLng> routePoints = [];
   bool isLoading = false;
