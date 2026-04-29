@@ -131,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen>
                         size: 60, color: Colors.white),
                     SizedBox(height: 12),
                     Text(
-                      "SmartTransit",
+                      "PunerouteX ",
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 26,
